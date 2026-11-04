@@ -68,18 +68,15 @@ jobs:
           cache: 'npm'
       - name: 依存関係のインストール
         run: npm ci
-      # TODO: フレームワークに合わせてベースパスの変数名を変更してください
+      # 相対パスで参照しているため、ベースパスの指定は不要
       - name: ビルド
         run: npm run build
         env:
           NODE_ENV: production
-          VITE_BASE_PATH: /${{ github.event.repository.name }}/
-          VITE_APP_ENV: production
       - name: GitHub Pages へのデプロイ
         uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453 # v4.1.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          # TODO: ビルド出力ディレクトリを確認してください（例: ./dist, ./build, ./out）
           publish_dir: ./dist
           keep_files: true
           exclude_assets: 'pr-*'
