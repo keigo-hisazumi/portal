@@ -1,0 +1,41 @@
+# GitHub Actions ワークフロー自体の Lint
+# `.github/workflows/*.yml` の構文・式の誤り・非推奨 Action・shellcheck などをチェックする。
+# サードパーティ Action を介さず、公式配布のバイナリをバージョン固定で実行する。
+
+name: actionlint
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/**"
+  pull_request:
+    paths:
+      - ".github/workflows/**"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  ACTIONLINT_VERSION: "1.7.12"
+
+jobs:
+  actionlint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: actionlint のダウンロード
+        run: |
+          bash <(curl -fsSL "https://raw.githubusercontent.com/rhysd/actionlint/v${ACTIONLINT_VERSION}/scripts/download-actionlint.bash") "${ACTIONLINT_VERSION}"
+      - name: actionlint を実行
+        run: |
+          echo "::add-matcher::.github/actionlint-matcher.json"
+          ./actionlint -color

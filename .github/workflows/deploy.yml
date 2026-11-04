@@ -1,0 +1,85 @@
+# GitHub Pages デプロイワークフロー（テンプレート）
+#
+# main ブランチへの PR マージ時に自動デプロイします（手動実行も可）。
+# 実プロジェクトに合わせて以下を確認してください:
+#   - ベースパスの環境変数名（VITE_BASE_PATH など）
+#   - ビルドコマンド（npm run build など）
+#   - publish_dir（ビルド出力ディレクトリ）
+#
+# Vite はベースパス用の環境変数を自動では読みません。`vite.config.ts` に
+# `base: process.env.VITE_BASE_PATH ?? '/'` を設定しないと、Pages 上でアセットが 404 になり画面が真っ白になります。
+#
+# package.json が存在しないリポジトリでは detect ジョブの判定によりスキップします。
+
+name: Deploy to GitHub Pages
+
+on:
+  pull_request:
+    branches: [main]
+    types: [closed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# 本番デプロイと PR プレビューデプロイは同じ gh-pages ブランチへ push する。
+# 別々の concurrency group だと同時実行で push が競合し、開設中 PR の
+# pr-* プレビューが消える（keep_files も救えない）。共通 group で直列化する。
+concurrency:
+  group: gh-pages-deploy
+  cancel-in-progress: false
+
+jobs:
+  detect:
+    name: Detect project
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    outputs:
+      has-package-json: ${{ steps.check.outputs.has-package-json }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: package.json の有無を判定
+        id: check
+        run: |
+          if [ -f package.json ]; then
+            echo "has-package-json=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has-package-json=false" >> "$GITHUB_OUTPUT"
+            echo "package.json が存在しないため、デプロイをスキップします"
+          fi
+
+  deploy:
+    permissions:
+      contents: write
+    needs: detect
+    if: needs.detect.outputs.has-package-json == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Node.js のセットアップ
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - name: 依存関係のインストール
+        run: npm ci
+      # TODO: フレームワークに合わせてベースパスの変数名を変更してください
+      - name: ビルド
+        run: npm run build
+        env:
+          NODE_ENV: production
+          VITE_BASE_PATH: /${{ github.event.repository.name }}/
+          VITE_APP_ENV: production
+      - name: GitHub Pages へのデプロイ
+        uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453 # v4.1.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          # TODO: ビルド出力ディレクトリを確認してください（例: ./dist, ./build, ./out）
+          publish_dir: ./dist
+          keep_files: true
+          exclude_assets: 'pr-*'

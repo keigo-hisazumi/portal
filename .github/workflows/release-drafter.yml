@@ -1,0 +1,31 @@
+# main へのマージ（push）ごとに Release Drafter がリリースノート草案を更新する。
+# タグを付けるタイミングで GitHub UI から「Publish release」を押せば公開できる。
+#
+# 分類は PR タイトルの Conventional Commits プレフィックス（feat: / fix: など）で行うため、
+# PR へのラベル付けは不要です（設定は `.github/release-drafter.yml`）。
+
+name: Release Drafter
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  update_release_draft:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - uses: release-drafter/release-drafter@978bb0b30c5ee8cdd332ced253758157150d43f0 # v7.10.0
+        with:
+          config-name: release-drafter.yml

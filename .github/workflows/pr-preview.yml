@@ -1,0 +1,175 @@
+# PR プレビューワークフロー（テンプレート）
+#
+# PR ごとに gh-pages ブランチへプレビュー環境をデプロイし、
+# PR コメントにプレビュー URL と QR コードを自動投稿します。
+# PR クローズ時はプレビューディレクトリを自動削除します。
+#
+# 実プロジェクトに合わせて以下を確認してください:
+#   - ベースパスの環境変数名（VITE_BASE_PATH など）
+#   - ビルドコマンド（npm run build など）
+#   - publish_dir（ビルド出力ディレクトリ）
+#
+# Vite はベースパス用の環境変数を自動では読みません。`vite.config.ts` に
+# `base: process.env.VITE_BASE_PATH ?? '/'` を設定しないと、Pages 上でアセットが 404 になり画面が真っ白になります。
+#
+# package.json が存在しないリポジトリでは detect ジョブの判定によりスキップします。
+
+name: PR Preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+# 本番デプロイ（deploy.yml）と同じ group で直列化し、gh-pages への
+# 同時 push による競合（pr-* プレビューの消失）を防ぐ。
+concurrency:
+  group: gh-pages-deploy
+  cancel-in-progress: false
+
+jobs:
+  detect:
+    name: Detect project
+    runs-on: ubuntu-latest
+    outputs:
+      has-package-json: ${{ steps.check.outputs.has-package-json }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: package.json の有無を判定
+        id: check
+        run: |
+          if [ -f package.json ]; then
+            echo "has-package-json=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has-package-json=false" >> "$GITHUB_OUTPUT"
+            echo "package.json が存在しないため、PR プレビューをスキップします"
+          fi
+
+  deploy-preview:
+    permissions:
+      contents: write
+      pull-requests: write
+    needs: detect
+    # Dependabot が起動したワークフローは GITHUB_TOKEN が読み取り専用になり、
+    # gh-pages への push やコメント投稿ができないためスキップする
+    if: >-
+      github.event.action != 'closed'
+      && needs.detect.outputs.has-package-json == 'true'
+      && github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Node.js のセットアップ
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: 依存関係のインストール
+        run: npm ci
+
+      # TODO: フレームワークに合わせてベースパスの変数名を変更してください
+      - name: PR ブランチ用ベースパスでビルド
+        env:
+          VITE_BASE_PATH: /${{ github.event.repository.name }}/pr-${{ github.event.number }}/
+          VITE_APP_ENV: preview
+          # TODO: PWA（Service Worker）を導入する場合は、プレビューで自己破棄する SW を
+          # 生成するなどして本番 SW との競合やプレビュー同士のキャッシュ混在を防いでください
+          # （例: VITE_DISABLE_PWA: 'true' を vite.config.ts で解釈する）
+        run: npm run build
+
+      - name: gh-pages への PR プレビューのデプロイ
+        uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453 # v4.1.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          destination_dir: pr-${{ github.event.number }}
+          keep_files: true
+
+      - name: プレビュー URL のコメント投稿
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const prNumber = context.issue.number;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const previewUrl = `https://${owner}.github.io/${repo}/pr-${prNumber}/`;
+            const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(previewUrl)}`;
+            const marker = '<!-- pr-preview -->';
+            const body = [
+              marker,
+              '## プレビュー環境 🚀',
+              '',
+              `| | |`,
+              `|---|---|`,
+              `| **プレビューURL** | [${previewUrl}](${previewUrl}) |`,
+              `| **コミット** | \`${context.sha.slice(0, 7)}\` |`,
+              `| **QRコード** | ![](${qrUrl}) |`,
+              '',
+              '*コードをプッシュするたびに自動更新されます。*',
+            ].join('\n');
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+            });
+
+            const existing = comments.find(c => c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body,
+              });
+            }
+
+  cleanup-preview:
+    permissions:
+      contents: write
+    needs: detect
+    if: github.event.action == 'closed' && needs.detect.outputs.has-package-json == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: gh-pages からプレビューディレクトリを削除
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          if ! git ls-remote --exit-code origin gh-pages; then
+            echo "gh-pages ブランチが存在しないため、クリーンアップをスキップします"
+            exit 0
+          fi
+
+          git fetch origin gh-pages
+          git checkout gh-pages
+
+          if [ -d "pr-${{ github.event.number }}" ]; then
+            git rm -rf "pr-${{ github.event.number }}"
+            git commit -m "chore: PR #${{ github.event.number }} のプレビューを削除"
+            git push origin gh-pages
+          else
+            echo "プレビューディレクトリ pr-${{ github.event.number }} が見つかりません、スキップします"
+          fi

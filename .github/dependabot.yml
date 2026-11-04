@@ -1,0 +1,66 @@
+# Dependabot 設定
+#
+# GitHub Actions と npm の更新を有効化しています。
+# GitHub Actions の更新はまとめて 1 つの PR にし、PR タイトルは Conventional Commits 形式（chore(deps): ...）になります。
+# Dependabot ではなく Renovate を使う場合は本ファイルを削除し、`renovate.json` を追加してください。
+
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Tokyo"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Tokyo"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    groups:
+      dev-dependencies:
+        dependency-type: "development"
+    ignore:
+      # typescript-eslint が対応するまで typescript のメジャーバージョン更新は保留する
+      # (typescript-eslint@8.64.0 時点では typescript の peer 範囲が >=4.8.4 <6.1.0 で
+      #  typescript 7.x 系と競合し、npm ci が ERESOLVE で失敗するため)
+      # typescript-eslint を使わない場合や、対応後は削除してください
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+
+  # TODO: pip を使う場合は有効化
+  # - package-ecosystem: "pip"
+  #   directory: "/"
+  #   schedule:
+  #     interval: "weekly"
+  #   labels:
+  #     - "dependencies"
+
+  # TODO: Docker を使う場合は有効化
+  # - package-ecosystem: "docker"
+  #   directory: "/"
+  #   schedule:
+  #     interval: "weekly"
+  #   labels:
+  #     - "dependencies"
