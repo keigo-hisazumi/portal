@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Portal | keigo-hisazumi</title>
+    <meta name="description" content="keigo-hisazumi が GitHub Pages で公開しているサイトの一覧" />
+    <meta name="theme-color" content="#1f2937" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0b1120" media="(prefers-color-scheme: dark)" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231f2937'/%3E%3Cpath d='M9 9h6v6H9zM17 9h6v6h-6zM9 17h6v6H9zM17 17h6v6h-6z' fill='%23fff'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="./styles.css" />
+    <script type="module" src="./main.js"></script>
+  </head>
+  <body>
+    <header class="header">
+      <div class="container header-inner">
+        <h1 class="title">Portal</h1>
+        <p class="subtitle">GitHub Pages で公開しているサイトの一覧</p>
+      </div>
+    </header>
+
+    <main class="container">
+      <div class="toolbar">
+        <label class="search">
+          <span class="visually-hidden">キーワードで絞り込み</span>
+          <input id="search" type="search" placeholder="キーワードで絞り込み" autocomplete="off" />
+        </label>
+        <span id="count" class="count" aria-live="polite"></span>
+      </div>
+
+      <p id="status" class="status" role="status" hidden></p>
+      <ul id="site-list" class="site-list" aria-label="サイト一覧"></ul>
+      <p id="empty" class="empty" hidden></p>
+    </main>
+
+    <footer class="footer container">
+      <a href="https://github.com/keigo-hisazumi">github.com/keigo-hisazumi</a>
+    </footer>
+
+    <template id="site-card">
+      <li class="card">
+        <h2 class="card-title"><a class="site-link"></a></h2>
+        <p class="site-url"></p>
+        <p class="site-description"></p>
+        <ul class="site-topics" aria-label="トピック"></ul>
+        <div class="site-meta">
+          <time class="site-updated"></time>
+          <a class="site-repo">リポジトリ</a>
+        </div>
+      </li>
+    </template>
+  </body>
+</html>
