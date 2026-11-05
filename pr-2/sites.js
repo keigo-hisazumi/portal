@@ -39,11 +39,12 @@ export function buildSites(repos, config) {
         id: `github:${repo.name}`,
         title: override.title ?? repo.name,
         description: override.description ?? repo.description ?? '',
+        // README の冒頭の説明文。null は未取得。description を上書きしているリポジトリは README を読まない
+        summary: null,
+        loadSummary: override.description === undefined,
         url: override.url ?? pagesUrl(repo, user),
         repoUrl: repo.html_url ?? `https://github.com/${user}/${repo.name}`,
         topics: override.topics ?? repo.topics ?? [],
-        // features が null のものは README の「主な機能」から後で読み込む
-        features: override.features ?? null,
         repoName: repo.name,
         defaultBranch: repo.default_branch ?? 'main',
         updatedAt: repo.pushed_at ?? repo.updated_at ?? null,
@@ -57,10 +58,11 @@ export function buildSites(repos, config) {
     id: `manual:${index}`,
     title: entry.title ?? entry.url,
     description: entry.description ?? '',
+    summary: null,
+    loadSummary: false,
     url: entry.url,
     repoUrl: entry.repoUrl ?? null,
     topics: entry.topics ?? [],
-    features: entry.features ?? [],
     repoName: null,
     defaultBranch: null,
     updatedAt: entry.updatedAt ?? null,
@@ -90,44 +92,73 @@ export function sortSites(sites) {
 }
 
 /**
- * キーワードでサイトを絞り込む（タイトル・説明・トピック・機能の部分一致、大文字小文字は区別しない）
+ * キーワードでサイトを絞り込む（タイトル・説明・トピックの部分一致、大文字小文字は区別しない）
  * スペース区切りの複数キーワードはすべてを含むものだけを残す
  */
 export function filterSites(sites, query) {
   const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
   if (words.length === 0) return sites;
   return sites.filter((site) => {
-    const haystack = [site.title, site.description, ...site.topics, ...(site.features ?? [])].join(' ').toLowerCase();
+    const haystack = [site.title, siteDescription(site), ...site.topics].join(' ').toLowerCase();
     return words.every((word) => haystack.includes(word));
   });
 }
 
 /**
- * README の Markdown から「## 主な機能」見出し直下の箇条書きを取り出す
- * 入れ子の箇条書きは無視し、Markdown の装飾は取り除いてプレーンテキストにする
+ * カードに表示する説明文
+ * README の冒頭の説明文を優先し、無ければ設定ファイルかリポジトリの Description を使う
+ */
+export function siteDescription(site) {
+  return (site.loadSummary && site.summary) || site.description;
+}
+
+// 説明文として長すぎる場合はこの文字数で切り詰める
+const SUMMARY_MAX_LENGTH = 160;
+
+/**
+ * README の Markdown から、最初の見出し（`# タイトル`）直後の説明文を取り出す
+ * バッジ・画像・箇条書き・表・コードブロック・「公開 URL: ...」の行は飛ばし、最初の段落だけを使う
  *
  * @param {string} markdown README の本文
- * @returns {string[]} 機能の一覧（見出しが無ければ空配列）
+ * @returns {string} 説明文（見つからなければ空文字）
  */
-export function extractFeatures(markdown) {
+export function extractSummary(markdown) {
   const lines = markdown.replace(/\r\n?/g, '\n').split('\n');
-  const start = lines.findIndex((line) => /^##\s+主な機能\s*#*\s*$/.test(line));
-  if (start === -1) return [];
+  const titleIndex = lines.findIndex((line) => /^#\s/.test(line));
 
-  const features = [];
+  let paragraph = [];
   let inCodeBlock = false;
-  for (const line of lines.slice(start + 1)) {
-    if (/^\s*(```|~~~)/.test(line)) inCodeBlock = !inCodeBlock;
+  for (const line of lines.slice(titleIndex + 1)) {
+    if (/^\s*(```|~~~)/.test(line)) {
+      inCodeBlock = !inCodeBlock;
+      continue;
+    }
     if (inCodeBlock) continue;
-    // 同じレベル以上の次の見出しで終わり
-    if (/^#{1,2}\s/.test(line)) break;
-    const match = line.match(/^[-*+]\s+(.+)$/) ?? line.match(/^\d+[.)]\s+(.+)$/);
-    if (match) {
-      const text = stripMarkdown(match[1]);
-      if (text) features.push(text);
+    // 次の見出しまでに説明文が無ければ諦める
+    if (/^#{1,6}\s/.test(line)) break;
+
+    if (line.trim() === '') {
+      const text = toSummary(paragraph);
+      if (text) return text;
+      paragraph = [];
+    } else if (!isNonProseLine(line)) {
+      paragraph.push(line.trim());
     }
   }
-  return features;
+  return toSummary(paragraph);
+}
+
+// 説明文に含めない行（バッジ・画像・HTML・箇条書き・番号付きリスト・引用・表・区切り線）
+function isNonProseLine(line) {
+  return /^\s*(\[?!\[|<|[-*+]\s|\d+[.)]\s|>|\||---|\*\*\*|___)/.test(line);
+}
+
+function toSummary(paragraph) {
+  if (paragraph.length === 0) return '';
+  const text = stripMarkdown(paragraph.join(' ')).replace(/\s+/g, ' ').trim();
+  // 「公開 URL: https://...」のような行や URL だけの段落は説明文として扱わない
+  if (/^(公開\s*URL|URL|デモ|demo)\s*[:：]/i.test(text) || /^<?https?:\/\/\S+>?$/.test(text)) return '';
+  return text.length > SUMMARY_MAX_LENGTH ? `${text.slice(0, SUMMARY_MAX_LENGTH - 1)}…` : text;
 }
 
 /**
