@@ -1,12 +1,12 @@
 # Portal
 
-keigo-hisazumi が GitHub Pages で公開しているサイトを一覧できるポータルページです。GitHub Pages を有効にしたリポジトリを GitHub API から自動で取得するため、新しいサイトを公開すると何もしなくても一覧に追加されます。
+keigo-hisazumi が GitHub Pages で公開しているサイトを一覧できるポータルページです。
 
-公開 URL: <https://keigo-hisazumi.github.io/portal/>
+**公開 URL**: <https://keigo-hisazumi.github.io/portal/>
 
 ## 主な機能
 
-- GitHub Pages を公開しているリポジトリを自動で一覧表示
+- GitHub Pages を公開しているリポジトリを GitHub API から自動で一覧表示（新しいサイトを公開すると何もしなくても追加）
 - 各サイトの説明・トピック・最終更新日・リポジトリへのリンクを表示
 - 各リポジトリの README の冒頭の説明文を読み込み、サイトの簡単な説明として表示
 - キーワード（タイトル・説明・トピック）での絞り込み
@@ -45,9 +45,10 @@ keigo-hisazumi が GitHub Pages で公開しているサイトを一覧できる
 
 シンプルなタスク管理アプリです。オフラインでも使えます。
 
-公開 URL: <https://keigo-hisazumi.github.io/todo/>
+**公開 URL**: <https://keigo-hisazumi.github.io/todo/>
 ```
 
+- 説明文は 1 行・60 字前後で書き、データの保存先・ビルド・ホスティングには触れません（書き方は [`AGENTS.md`](./AGENTS.md) の「README の構成」）
 - バッジ・画像・箇条書き・コードブロック・「公開 URL: 〜」の行は説明文に含めません
 - 160 文字を超える場合は切り詰めて表示します
 - README に説明文が無い場合は、リポジトリの Description を表示します
