@@ -207,39 +207,11 @@ a {
   font-size: 0.75rem;
 }
 
-/* 機能一覧の開閉とリポジトリへのリンクは、カード全体のリンクより手前に出す */
-.site-features,
+/* リポジトリへのリンクはカード全体のリンクより手前に出す */
 .site-repo {
   position: relative;
   z-index: 1;
-}
-
-.site-repo {
   margin-left: auto;
-}
-
-.site-features {
-  font-size: 0.875rem;
-}
-
-.site-features summary {
-  cursor: pointer;
-  color: var(--muted);
-  width: fit-content;
-}
-
-.site-features-count {
-  font-size: 0.75rem;
-}
-
-.site-features ul {
-  list-style: disc;
-  margin: 6px 0 0;
-  padding-left: 1.25em;
-}
-
-.site-features li + li {
-  margin-top: 2px;
 }
 
 .footer {

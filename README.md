@@ -8,8 +8,8 @@ keigo-hisazumi が GitHub Pages で公開しているサイトを一覧できる
 
 - GitHub Pages を公開しているリポジトリを自動で一覧表示
 - 各サイトの説明・トピック・最終更新日・リポジトリへのリンクを表示
-- 各リポジトリの README の「主な機能」を読み込み、サイトごとの機能説明として表示
-- キーワード（タイトル・説明・トピック・機能）での絞り込み
+- 各リポジトリの README の冒頭の説明文を読み込み、サイトの簡単な説明として表示
+- キーワード（タイトル・説明・トピック）での絞り込み
 - 設定ファイルでの表示名・説明の上書き、並び順の固定、非表示
 - GitHub 以外で公開しているサイトの手動追加
 - ライト / ダークモード対応、スマートフォン対応
@@ -36,20 +36,23 @@ keigo-hisazumi が GitHub Pages で公開しているサイトを一覧できる
 
 設定項目の詳細は [`docs/sites-config.md`](./docs/sites-config.md) を参照してください。リポジトリの説明（Description）・トピック（Topics）・Website 欄は GitHub のリポジトリ設定がそのまま反映されるため、まずはそちらを整えるのがおすすめです。
 
-## 機能説明の表示
+## 説明文の表示
 
-各サイトのカードには、そのリポジトリの `README.md` にある `## 主な機能` 見出し直下の箇条書きを「主な機能」として表示します。README を更新するだけで反映されるため、ポータル側の編集は不要です。
+各サイトのカードには、そのリポジトリの `README.md` で最初の見出し（`# タイトル`）の直後に書いた段落を、サイトの説明として表示します。README を更新するだけで反映されるため、ポータル側の編集は不要です。
 
 ```markdown
-## 主な機能
+# ToDo
 
-- タスクの追加・編集・削除
-- 期限での並べ替え
+シンプルなタスク管理アプリです。オフラインでも使えます。
+
+公開 URL: <https://keigo-hisazumi.github.io/todo/>
 ```
 
-- README は `raw.githubusercontent.com` から取得するため、GitHub API の利用回数を消費しません
-- 取得結果はブラウザに保存し、リポジトリに push があったときだけ取得し直します
-- README に見出しが無い場合や、ポータル側で内容を変えたい場合は `src/sites.json` の `features` で指定できます
+- バッジ・画像・箇条書き・コードブロック・「公開 URL: 〜」の行は説明文に含めません
+- 160 文字を超える場合は切り詰めて表示します
+- README に説明文が無い場合は、リポジトリの Description を表示します
+- ポータル側で説明を変えたい場合は `src/sites.json` の `overrides` で `description` を指定します（README より優先されます）
+- README は `raw.githubusercontent.com` から取得するため、GitHub API の利用回数を消費しません。取得結果はブラウザに保存し、リポジトリに push があったときだけ取得し直します
 
 ## 技術スタック
 
@@ -94,7 +97,7 @@ npm test          # テストを実行
 
 ## デプロイ
 
-main ブランチへの PR マージ時に GitHub Actions で `dist/` をビルドし、GitHub Pages（gh-pages ブランチ）へデプロイします。PR ごとのプレビューは `https://keigo-hisazumi.github.io/portal/pr-<番号>/` に公開されます。一覧の内容と機能説明は閲覧時に GitHub から取得するため、他のリポジトリで Pages を公開したり README を更新したりしただけなら再デプロイは不要です。
+main ブランチへの PR マージ時に GitHub Actions で `dist/` をビルドし、GitHub Pages（gh-pages ブランチ）へデプロイします。PR ごとのプレビューは `https://keigo-hisazumi.github.io/portal/pr-<番号>/` に公開されます。一覧の内容と説明文は閲覧時に GitHub から取得するため、他のリポジトリで Pages を公開したり README を更新したりしただけなら再デプロイは不要です。
 
 ## 開発ルール
 

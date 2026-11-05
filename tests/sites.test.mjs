@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { buildSites, extractFeatures, filterSites, pagesUrl, stripMarkdown } from '../src/sites.js';
+import { buildSites, extractSummary, filterSites, pagesUrl, siteDescription, stripMarkdown } from '../src/sites.js';
 import { validateConfig } from '../scripts/validate-config.mjs';
 
 const USER = 'keigo-hisazumi';
@@ -96,61 +96,58 @@ test('filterSites: タイトル・説明・トピックを大文字小文字を�
   assert.equal(filterSites(sites, '  ').length, 2);
 });
 
-test('buildSites: features は overrides / extra の指定を使い、無ければ README から読み込む対象（null）にする', () => {
-  const sites = buildSites([repo('auto'), repo('manual', { default_branch: 'master' })], {
-    user: USER,
-    overrides: { manual: { features: ['手動の機能'] } },
-    extra: [{ title: '外部', url: 'https://example.com/', features: ['外部の機能'] }],
-  });
+test('siteDescription: README の説明文を優先し、description を上書きしたものは README を使わない', () => {
+  const sites = buildSites(
+    [repo('auto', { description: 'Description 欄' }), repo('manual', { description: 'Description 欄' }), repo('no-summary', { description: 'Description 欄' })],
+    { user: USER, overrides: { manual: { description: '手動の説明' } } },
+  );
   const byTitle = Object.fromEntries(sites.map((s) => [s.title, s]));
-  assert.equal(byTitle.auto.features, null);
-  assert.equal(byTitle.auto.defaultBranch, 'main');
-  assert.deepEqual(byTitle.manual.features, ['手動の機能']);
-  assert.equal(byTitle.manual.defaultBranch, 'master');
-  assert.deepEqual(byTitle['外部'].features, ['外部の機能']);
+  assert.equal(byTitle.auto.loadSummary, true);
+  assert.equal(byTitle.manual.loadSummary, false);
+
+  byTitle.auto.summary = 'README の説明';
+  byTitle.manual.summary = 'README の説明';
+  byTitle['no-summary'].summary = '';
+  assert.equal(siteDescription(byTitle.auto), 'README の説明');
+  assert.equal(siteDescription(byTitle.manual), '手動の説明');
+  assert.equal(siteDescription(byTitle['no-summary']), 'Description 欄');
 });
 
-test('filterSites: 機能説明も検索対象にする', () => {
-  const sites = buildSites([repo('a'), repo('b')], { user: USER, overrides: { a: { features: ['CSV 出力'] } } });
+test('filterSites: README の説明文も検索対象にする', () => {
+  const sites = buildSites([repo('a'), repo('b')], { user: USER });
+  sites.find((s) => s.title === 'a').summary = '家計簿を CSV で出力するアプリ';
   assert.deepEqual(filterSites(sites, 'csv').map((s) => s.title), ['a']);
 });
 
-test('extractFeatures: 「## 主な機能」直下の箇条書きを取り出す', () => {
+test('extractSummary: タイトル直後の段落を取り出す', () => {
   const markdown = [
-    '# アプリ',
+    '# ToDo',
     '',
-    '説明文',
+    '[![CI](https://example.com/badge.svg)](https://example.com/)',
+    '',
+    'シンプルな **タスク管理** アプリです。',
+    '`snake_case` の名前はそのまま残します。',
+    '',
+    '公開 URL: <https://example.com/>',
     '',
     '## 主な機能',
     '',
-    '- タスクの **追加** と `削除`',
-    '* [リンク](https://example.com) 付きの項目',
-    '  - 入れ子は無視する',
-    '- snake_case の名前はそのまま',
-    '',
-    '### 補足',
-    '',
-    '- 小見出しの下の箇条書きも含める',
-    '',
-    '## 技術スタック',
-    '',
-    '- React',
+    '- タスクの追加',
   ].join('\r\n');
-  assert.deepEqual(extractFeatures(markdown), [
-    'タスクの 追加 と 削除',
-    'リンク 付きの項目',
-    'snake_case の名前はそのまま',
-    '小見出しの下の箇条書きも含める',
-  ]);
+  assert.equal(extractSummary(markdown), 'シンプルな タスク管理 アプリです。 snake_case の名前はそのまま残します。');
 });
 
-test('extractFeatures: 番号付きリストにも対応し、コードブロック内は無視する', () => {
-  const markdown = ['## 主な機能', '', '1. 一つ目', '2) 二つ目', '', '```text', '## 見出しではない', '- 箇条書きではない', '```', '- 三つ目'].join('\n');
-  assert.deepEqual(extractFeatures(markdown), ['一つ目', '二つ目', '三つ目']);
+test('extractSummary: 公開 URL やコードブロックを飛ばし、見出しまでに説明が無ければ空文字を返す', () => {
+  assert.equal(extractSummary('# App\n\n公開 URL: <https://example.com/>\n\n```text\nコード\n```\n\n説明文です。\n'), '説明文です。');
+  assert.equal(extractSummary('# App\n\n- 箇条書きだけ\n\n## 主な機能\n\n本文\n'), '');
+  assert.equal(extractSummary(''), '');
 });
 
-test('extractFeatures: 見出しが無ければ空配列を返す', () => {
-  assert.deepEqual(extractFeatures('# アプリ\n\n- 箇条書き\n'), []);
+test('extractSummary: タイトルが無い README は先頭の段落を使い、長すぎる説明は切り詰める', () => {
+  assert.equal(extractSummary('説明だけの README\n'), '説明だけの README');
+  const summary = extractSummary(`# App\n\n${'あ'.repeat(300)}\n`);
+  assert.equal(summary.length, 160);
+  assert.ok(summary.endsWith('…'));
 });
 
 test('stripMarkdown: HTML タグや画像を取り除く', () => {
@@ -170,14 +167,13 @@ test('validateConfig: 誤った書式を検出する', () => {
   const errors = validateConfig({
     user: '',
     exclude: 'portal',
-    overrides: { app: { titel: 'typo', order: '1', features: '機能' } },
+    overrides: { app: { titel: 'typo', order: '1' } },
     extra: [{ title: 'URL なし' }, { url: 'javascript:alert(1)' }],
   });
   assert.ok(errors.some((e) => e.includes('user')));
   assert.ok(errors.some((e) => e.includes('exclude')));
   assert.ok(errors.some((e) => e.includes('overrides.app.titel')));
   assert.ok(errors.some((e) => e.includes('overrides.app.order')));
-  assert.ok(errors.some((e) => e.includes('overrides.app.features')));
   assert.ok(errors.some((e) => e.includes('extra[0].url は必須')));
   assert.ok(errors.some((e) => e.includes('extra[1].url は http(s)')));
 });
