@@ -156,6 +156,9 @@ test('extractFeatures: 見出しが無ければ空配列を返す', () => {
 test('stripMarkdown: HTML タグや画像を取り除く', () => {
   assert.equal(stripMarkdown('<img src=x onerror=alert(1)>![図](a.png) ~~旧~~ *新*'), '図 旧 新');
   assert.equal(stripMarkdown('[x] 完了済み'), '完了済み');
+  // 1 回の除去で新しいタグができる入力も残さない
+  assert.equal(stripMarkdown('<scr<script>ipt>alert(1)</scr</script>ipt>'), 'alert(1)');
+  assert.equal(stripMarkdown('<<b>img src=x onerror=alert(1)>'), '');
 });
 
 test('validateConfig: リポジトリの src/sites.json は正しい書式になっている', async () => {

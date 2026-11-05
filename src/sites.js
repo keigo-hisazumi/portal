@@ -134,16 +134,29 @@ export function extractFeatures(markdown) {
  * インラインの Markdown 記法を取り除く（表示は textContent で行うため HTML は解釈しない）
  */
 export function stripMarkdown(text) {
-  return text
+  return removeHtmlTags(text)
     .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1') // 画像
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1') // リンク
-    .replace(/<[^>]+>/g, '') // HTML タグ
     .replace(/`([^`]*)`/g, '$1') // インラインコード
     .replace(/(\*\*|__)(.+?)\1/g, '$2') // 太字
     .replace(/\*(.+?)\*/g, '$1') // 斜体（snake_case の _ を消さないよう * のみ対象）
     .replace(/~~(.+?)~~/g, '$1') // 取り消し線
     .replace(/^\[[ xX]\]\s+/, '') // チェックボックス
     .trim();
+}
+
+/**
+ * HTML タグを取り除く
+ * `<scr<script>ipt>` のように除去後に新しいタグができる入力に備え、変化がなくなるまで繰り返す
+ */
+function removeHtmlTags(text) {
+  let previous;
+  let current = text;
+  do {
+    previous = current;
+    current = current.replace(/<[^<>]*>/g, '');
+  } while (current !== previous);
+  return current;
 }
 
 // overrides のキーをリポジトリ名の大文字小文字の違いに左右されないよう小文字にそろえる
