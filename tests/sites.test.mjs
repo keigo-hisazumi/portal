@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { buildSites, filterSites, pagesUrl } from '../src/sites.js';
+import { buildSites, extractSummary, filterSites, pagesUrl, siteDescription, stripMarkdown } from '../src/sites.js';
 import { validateConfig } from '../scripts/validate-config.mjs';
 
 const USER = 'keigo-hisazumi';
@@ -94,6 +94,68 @@ test('filterSites: タイトル・説明・トピックを大文字小文字を�
   assert.deepEqual(filterSites(sites, 'PWA タスク').map((s) => s.title), ['Todo']);
   assert.deepEqual(filterSites(sites, 'markdown').map((s) => s.title), ['Blog']);
   assert.equal(filterSites(sites, '  ').length, 2);
+});
+
+test('siteDescription: README の説明文を優先し、description を上書きしたものは README を使わない', () => {
+  const sites = buildSites(
+    [repo('auto', { description: 'Description 欄' }), repo('manual', { description: 'Description 欄' }), repo('no-summary', { description: 'Description 欄' })],
+    { user: USER, overrides: { manual: { description: '手動の説明' } } },
+  );
+  const byTitle = Object.fromEntries(sites.map((s) => [s.title, s]));
+  assert.equal(byTitle.auto.loadSummary, true);
+  assert.equal(byTitle.manual.loadSummary, false);
+
+  byTitle.auto.summary = 'README の説明';
+  byTitle.manual.summary = 'README の説明';
+  byTitle['no-summary'].summary = '';
+  assert.equal(siteDescription(byTitle.auto), 'README の説明');
+  assert.equal(siteDescription(byTitle.manual), '手動の説明');
+  assert.equal(siteDescription(byTitle['no-summary']), 'Description 欄');
+});
+
+test('filterSites: README の説明文も検索対象にする', () => {
+  const sites = buildSites([repo('a'), repo('b')], { user: USER });
+  sites.find((s) => s.title === 'a').summary = '家計簿を CSV で出力するアプリ';
+  assert.deepEqual(filterSites(sites, 'csv').map((s) => s.title), ['a']);
+});
+
+test('extractSummary: タイトル直後の段落を取り出す', () => {
+  const markdown = [
+    '# ToDo',
+    '',
+    '[![CI](https://example.com/badge.svg)](https://example.com/)',
+    '',
+    'シンプルな **タスク管理** アプリです。',
+    '`snake_case` の名前はそのまま残します。',
+    '',
+    '公開 URL: <https://example.com/>',
+    '',
+    '## 主な機能',
+    '',
+    '- タスクの追加',
+  ].join('\r\n');
+  assert.equal(extractSummary(markdown), 'シンプルな タスク管理 アプリです。 snake_case の名前はそのまま残します。');
+});
+
+test('extractSummary: 公開 URL やコードブロックを飛ばし、見出しまでに説明が無ければ空文字を返す', () => {
+  assert.equal(extractSummary('# App\n\n公開 URL: <https://example.com/>\n\n```text\nコード\n```\n\n説明文です。\n'), '説明文です。');
+  assert.equal(extractSummary('# App\n\n- 箇条書きだけ\n\n## 主な機能\n\n本文\n'), '');
+  assert.equal(extractSummary(''), '');
+});
+
+test('extractSummary: タイトルが無い README は先頭の段落を使い、長すぎる説明は切り詰める', () => {
+  assert.equal(extractSummary('説明だけの README\n'), '説明だけの README');
+  const summary = extractSummary(`# App\n\n${'あ'.repeat(300)}\n`);
+  assert.equal(summary.length, 160);
+  assert.ok(summary.endsWith('…'));
+});
+
+test('stripMarkdown: HTML タグや画像を取り除く', () => {
+  assert.equal(stripMarkdown('<img src=x onerror=alert(1)>![図](a.png) ~~旧~~ *新*'), '図 旧 新');
+  assert.equal(stripMarkdown('[x] 完了済み'), '完了済み');
+  // 1 回の除去で新しいタグができる入力も残さない
+  assert.equal(stripMarkdown('<scr<script>ipt>alert(1)</scr</script>ipt>'), 'alert(1)');
+  assert.equal(stripMarkdown('<<b>img src=x onerror=alert(1)>'), '');
 });
 
 test('validateConfig: リポジトリの src/sites.json は正しい書式になっている', async () => {
