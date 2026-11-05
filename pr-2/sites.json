@@ -1,0 +1,8 @@
+{
+  "user": "keigo-hisazumi",
+  "includeForks": false,
+  "includeArchived": false,
+  "exclude": ["portal"],
+  "overrides": {},
+  "extra": []
+}
