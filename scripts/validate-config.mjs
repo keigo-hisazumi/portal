@@ -1,8 +1,8 @@
 // src/sites.json の書式を検証する
 // 戻り値はエラーメッセージの配列（空なら問題なし）
 
-const OVERRIDE_KEYS = new Set(['title', 'description', 'url', 'topics', 'order', 'hidden']);
-const EXTRA_KEYS = new Set(['title', 'description', 'url', 'repoUrl', 'topics', 'updatedAt', 'order', 'hidden']);
+const OVERRIDE_KEYS = new Set(['title', 'description', 'url', 'topics', 'features', 'order', 'hidden']);
+const EXTRA_KEYS = new Set(['title', 'description', 'url', 'repoUrl', 'topics', 'features', 'updatedAt', 'order', 'hidden']);
 
 export function validateConfig(config) {
   const errors = [];
@@ -50,7 +50,9 @@ function validateEntry(entry, path, allowedKeys) {
   for (const key of ['url', 'repoUrl']) {
     if (typeof entry[key] === 'string' && !/^https?:\/\//.test(entry[key])) errors.push(`${path}.${key} は http(s):// で始まる URL にしてください`);
   }
-  if ('topics' in entry && !isStringArray(entry.topics)) errors.push(`${path}.topics は文字列の配列にしてください`);
+  for (const key of ['topics', 'features']) {
+    if (key in entry && !isStringArray(entry[key])) errors.push(`${path}.${key} は文字列の配列にしてください`);
+  }
   if ('order' in entry && typeof entry.order !== 'number') errors.push(`${path}.order は数値にしてください`);
   if ('hidden' in entry && typeof entry.hidden !== 'boolean') errors.push(`${path}.hidden は true / false で指定してください`);
   return errors;

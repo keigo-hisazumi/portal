@@ -1,14 +1,17 @@
 // ポータル画面の処理
 // sites.json を読み込み、GitHub API から Pages を公開しているリポジトリを取得して一覧表示する
+// 各サイトの機能説明は、リポジトリの README にある「## 主な機能」の箇条書きから読み込む
 
-import { buildSites, filterSites } from './sites.js';
+import { buildSites, extractFeatures, filterSites } from './sites.js';
 
 // GitHub API の未認証リクエストは 1 時間あたり 60 回までのため、結果を一定時間キャッシュする
-const CACHE_KEY = 'portal:repos:v1';
+const CACHE_KEY = 'portal:repos:v2';
 const CACHE_TTL_MS = 60 * 60 * 1000;
 // 1 ページ 100 件 × 最大 3 ページ（300 リポジトリ）まで取得する
 const PER_PAGE = 100;
 const MAX_PAGES = 3;
+// README から取り出した機能一覧のキャッシュ。リポジトリの pushed_at が変わるまで使い回す
+const FEATURES_CACHE_KEY = 'portal:features:v1';
 
 const listElement = document.getElementById('site-list');
 const statusElement = document.getElementById('status');
@@ -18,6 +21,8 @@ const emptyElement = document.getElementById('empty');
 const template = document.getElementById('site-card');
 
 let allSites = [];
+// 再描画しても「主な機能」の開閉状態を保つため、開いているサイトの id を覚えておく
+const openFeatureIds = new Set();
 
 main();
 
@@ -31,6 +36,8 @@ async function main() {
     } else {
       hideStatus();
     }
+    render();
+    await loadFeatures(config.user);
     render();
   } catch (e) {
     console.error(e);
@@ -87,6 +94,7 @@ function writeCache(user, repos) {
     description: repo.description,
     homepage: repo.homepage,
     html_url: repo.html_url,
+    default_branch: repo.default_branch,
     has_pages: repo.has_pages,
     fork: repo.fork,
     archived: repo.archived,
@@ -109,6 +117,61 @@ function readCache(user) {
     return cached;
   } catch {
     return null;
+  }
+}
+
+/**
+ * features が未設定のサイトについて、README の「## 主な機能」を読み込む
+ * raw.githubusercontent.com は GitHub API の利用回数制限の対象外なので、API の残り回数を消費しない
+ */
+async function loadFeatures(user) {
+  const cache = readFeaturesCache(user);
+  const targets = allSites.filter((site) => site.features === null && site.repoName);
+
+  await Promise.all(
+    targets.map(async (site) => {
+      const cached = cache[site.repoName];
+      if (cached && cached.pushedAt === site.updatedAt) {
+        site.features = cached.features;
+        return;
+      }
+      try {
+        site.features = await fetchFeatures(user, site.repoName, site.defaultBranch);
+        cache[site.repoName] = { pushedAt: site.updatedAt, features: site.features };
+      } catch (e) {
+        console.error(e);
+        // 取得に失敗した場合は古いキャッシュがあれば使い、次回また取得を試みる
+        site.features = cached?.features ?? [];
+      }
+    }),
+  );
+  writeFeaturesCache(user, cache);
+}
+
+async function fetchFeatures(user, repoName, branch) {
+  const url = `https://raw.githubusercontent.com/${encodeURIComponent(user)}/${encodeURIComponent(repoName)}/${encodeURIComponent(branch)}/README.md`;
+  const response = await fetch(url);
+  // README が無いリポジトリは機能説明なしとして扱う
+  if (response.status === 404) return [];
+  if (!response.ok) throw new Error(`README の取得に失敗しました（${repoName}）: ${response.status}`);
+  return extractFeatures(await response.text());
+}
+
+function readFeaturesCache(user) {
+  try {
+    const cached = JSON.parse(localStorage.getItem(FEATURES_CACHE_KEY) ?? 'null');
+    if (cached?.user === user && cached.items && typeof cached.items === 'object') return cached.items;
+  } catch {
+    // 壊れたキャッシュは無視する
+  }
+  return {};
+}
+
+function writeFeaturesCache(user, items) {
+  try {
+    localStorage.setItem(FEATURES_CACHE_KEY, JSON.stringify({ user, items }));
+  } catch {
+    // プライベートブラウズなどで保存できない場合は無視する
   }
 }
 
@@ -148,6 +211,25 @@ function createCard(site) {
     );
   } else {
     topics.remove();
+  }
+
+  const features = card.querySelector('.site-features');
+  if (site.features && site.features.length > 0) {
+    features.querySelector('.site-features-count').textContent = `（${site.features.length}）`;
+    features.querySelector('ul').replaceChildren(
+      ...site.features.map((feature) => {
+        const item = document.createElement('li');
+        item.textContent = feature;
+        return item;
+      }),
+    );
+    features.open = openFeatureIds.has(site.id);
+    features.addEventListener('toggle', () => {
+      if (features.open) openFeatureIds.add(site.id);
+      else openFeatureIds.delete(site.id);
+    });
+  } else {
+    features.remove();
   }
 
   const meta = card.querySelector('.site-meta');

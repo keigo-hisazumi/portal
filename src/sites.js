@@ -42,6 +42,10 @@ export function buildSites(repos, config) {
         url: override.url ?? pagesUrl(repo, user),
         repoUrl: repo.html_url ?? `https://github.com/${user}/${repo.name}`,
         topics: override.topics ?? repo.topics ?? [],
+        // features が null のものは README の「主な機能」から後で読み込む
+        features: override.features ?? null,
+        repoName: repo.name,
+        defaultBranch: repo.default_branch ?? 'main',
         updatedAt: repo.pushed_at ?? repo.updated_at ?? null,
         order: typeof override.order === 'number' ? override.order : null,
         archived: Boolean(repo.archived),
@@ -56,6 +60,9 @@ export function buildSites(repos, config) {
     url: entry.url,
     repoUrl: entry.repoUrl ?? null,
     topics: entry.topics ?? [],
+    features: entry.features ?? [],
+    repoName: null,
+    defaultBranch: null,
     updatedAt: entry.updatedAt ?? null,
     order: typeof entry.order === 'number' ? entry.order : null,
     archived: false,
@@ -83,16 +90,60 @@ export function sortSites(sites) {
 }
 
 /**
- * キーワードでサイトを絞り込む（タイトル・説明・トピックの部分一致、大文字小文字は区別しない）
+ * キーワードでサイトを絞り込む（タイトル・説明・トピック・機能の部分一致、大文字小文字は区別しない）
  * スペース区切りの複数キーワードはすべてを含むものだけを残す
  */
 export function filterSites(sites, query) {
   const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
   if (words.length === 0) return sites;
   return sites.filter((site) => {
-    const haystack = [site.title, site.description, ...site.topics].join(' ').toLowerCase();
+    const haystack = [site.title, site.description, ...site.topics, ...(site.features ?? [])].join(' ').toLowerCase();
     return words.every((word) => haystack.includes(word));
   });
+}
+
+/**
+ * README の Markdown から「## 主な機能」見出し直下の箇条書きを取り出す
+ * 入れ子の箇条書きは無視し、Markdown の装飾は取り除いてプレーンテキストにする
+ *
+ * @param {string} markdown README の本文
+ * @returns {string[]} 機能の一覧（見出しが無ければ空配列）
+ */
+export function extractFeatures(markdown) {
+  const lines = markdown.replace(/\r\n?/g, '\n').split('\n');
+  const start = lines.findIndex((line) => /^##\s+主な機能\s*#*\s*$/.test(line));
+  if (start === -1) return [];
+
+  const features = [];
+  let inCodeBlock = false;
+  for (const line of lines.slice(start + 1)) {
+    if (/^\s*(```|~~~)/.test(line)) inCodeBlock = !inCodeBlock;
+    if (inCodeBlock) continue;
+    // 同じレベル以上の次の見出しで終わり
+    if (/^#{1,2}\s/.test(line)) break;
+    const match = line.match(/^[-*+]\s+(.+)$/) ?? line.match(/^\d+[.)]\s+(.+)$/);
+    if (match) {
+      const text = stripMarkdown(match[1]);
+      if (text) features.push(text);
+    }
+  }
+  return features;
+}
+
+/**
+ * インラインの Markdown 記法を取り除く（表示は textContent で行うため HTML は解釈しない）
+ */
+export function stripMarkdown(text) {
+  return text
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1') // 画像
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1') // リンク
+    .replace(/<[^>]+>/g, '') // HTML タグ
+    .replace(/`([^`]*)`/g, '$1') // インラインコード
+    .replace(/(\*\*|__)(.+?)\1/g, '$2') // 太字
+    .replace(/\*(.+?)\*/g, '$1') // 斜体（snake_case の _ を消さないよう * のみ対象）
+    .replace(/~~(.+?)~~/g, '$1') // 取り消し線
+    .replace(/^\[[ xX]\]\s+/, '') // チェックボックス
+    .trim();
 }
 
 // overrides のキーをリポジトリ名の大文字小文字の違いに左右されないよう小文字にそろえる

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { buildSites, filterSites, pagesUrl } from '../src/sites.js';
+import { buildSites, extractFeatures, filterSites, pagesUrl, stripMarkdown } from '../src/sites.js';
 import { validateConfig } from '../scripts/validate-config.mjs';
 
 const USER = 'keigo-hisazumi';
@@ -96,6 +96,68 @@ test('filterSites: タイトル・説明・トピックを大文字小文字を�
   assert.equal(filterSites(sites, '  ').length, 2);
 });
 
+test('buildSites: features は overrides / extra の指定を使い、無ければ README から読み込む対象（null）にする', () => {
+  const sites = buildSites([repo('auto'), repo('manual', { default_branch: 'master' })], {
+    user: USER,
+    overrides: { manual: { features: ['手動の機能'] } },
+    extra: [{ title: '外部', url: 'https://example.com/', features: ['外部の機能'] }],
+  });
+  const byTitle = Object.fromEntries(sites.map((s) => [s.title, s]));
+  assert.equal(byTitle.auto.features, null);
+  assert.equal(byTitle.auto.defaultBranch, 'main');
+  assert.deepEqual(byTitle.manual.features, ['手動の機能']);
+  assert.equal(byTitle.manual.defaultBranch, 'master');
+  assert.deepEqual(byTitle['外部'].features, ['外部の機能']);
+});
+
+test('filterSites: 機能説明も検索対象にする', () => {
+  const sites = buildSites([repo('a'), repo('b')], { user: USER, overrides: { a: { features: ['CSV 出力'] } } });
+  assert.deepEqual(filterSites(sites, 'csv').map((s) => s.title), ['a']);
+});
+
+test('extractFeatures: 「## 主な機能」直下の箇条書きを取り出す', () => {
+  const markdown = [
+    '# アプリ',
+    '',
+    '説明文',
+    '',
+    '## 主な機能',
+    '',
+    '- タスクの **追加** と `削除`',
+    '* [リンク](https://example.com) 付きの項目',
+    '  - 入れ子は無視する',
+    '- snake_case の名前はそのまま',
+    '',
+    '### 補足',
+    '',
+    '- 小見出しの下の箇条書きも含める',
+    '',
+    '## 技術スタック',
+    '',
+    '- React',
+  ].join('\r\n');
+  assert.deepEqual(extractFeatures(markdown), [
+    'タスクの 追加 と 削除',
+    'リンク 付きの項目',
+    'snake_case の名前はそのまま',
+    '小見出しの下の箇条書きも含める',
+  ]);
+});
+
+test('extractFeatures: 番号付きリストにも対応し、コードブロック内は無視する', () => {
+  const markdown = ['## 主な機能', '', '1. 一つ目', '2) 二つ目', '', '```text', '## 見出しではない', '- 箇条書きではない', '```', '- 三つ目'].join('\n');
+  assert.deepEqual(extractFeatures(markdown), ['一つ目', '二つ目', '三つ目']);
+});
+
+test('extractFeatures: 見出しが無ければ空配列を返す', () => {
+  assert.deepEqual(extractFeatures('# アプリ\n\n- 箇条書き\n'), []);
+});
+
+test('stripMarkdown: HTML タグや画像を取り除く', () => {
+  assert.equal(stripMarkdown('<img src=x onerror=alert(1)>![図](a.png) ~~旧~~ *新*'), '図 旧 新');
+  assert.equal(stripMarkdown('[x] 完了済み'), '完了済み');
+});
+
 test('validateConfig: リポジトリの src/sites.json は正しい書式になっている', async () => {
   const config = JSON.parse(await readFile(new URL('../src/sites.json', import.meta.url), 'utf8'));
   assert.deepEqual(validateConfig(config), []);
@@ -105,13 +167,14 @@ test('validateConfig: 誤った書式を検出する', () => {
   const errors = validateConfig({
     user: '',
     exclude: 'portal',
-    overrides: { app: { titel: 'typo', order: '1' } },
+    overrides: { app: { titel: 'typo', order: '1', features: '機能' } },
     extra: [{ title: 'URL なし' }, { url: 'javascript:alert(1)' }],
   });
   assert.ok(errors.some((e) => e.includes('user')));
   assert.ok(errors.some((e) => e.includes('exclude')));
   assert.ok(errors.some((e) => e.includes('overrides.app.titel')));
   assert.ok(errors.some((e) => e.includes('overrides.app.order')));
+  assert.ok(errors.some((e) => e.includes('overrides.app.features')));
   assert.ok(errors.some((e) => e.includes('extra[0].url は必須')));
   assert.ok(errors.some((e) => e.includes('extra[1].url は http(s)')));
 });
